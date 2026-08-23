@@ -103,27 +103,27 @@
           ];
         };
       }
-    #   // lib.optionalAttrs (system == "x86_64-linux") {
-    #     # Two behavioural tests, deliberately not merged:
-    #     #
-    #     #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
-    #     #                    htpasswd, systemd hardening, StateDirectory.
-    #     #   zot-image     -- the artifact we publish: does it load into
-    #     #                    Docker, start with a mounted config, serve, and
-    #     #                    still ship no shell.
-    #     #
-    #     # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
-    #     # merged into `nodes` rather than being a systemd-nspawn mode. A
-    #     # shared-vCPU cloud instance may not expose /dev/kvm at all -- check
-    #     # before expecting these to run on the CI box.
-    #     #
-    #     # Note that a red check does NOT hold back the push: argunix
-    #     # publishes an image when its own job succeeds, and checks are
-    #     # separate top-level jobs.
-    #     checks = {
-    #       zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
-    #       zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
-    #     };
-    #   }
-    # );
+      # // lib.optionalAttrs (system == "x86_64-linux") {
+      #   # Two behavioural tests, deliberately not merged:
+      #   #
+      #   #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
+      #   #                    htpasswd, systemd hardening, StateDirectory.
+      #   #   zot-image     -- the artifact we publish: does it load into
+      #   #                    Docker, start with a mounted config, serve, and
+      #   #                    still ship no shell.
+      #   #
+      #   # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
+      #   # merged into `nodes` rather than being a systemd-nspawn mode. A
+      #   # shared-vCPU cloud instance may not expose /dev/kvm at all -- check
+      #   # before expecting these to run on the CI box.
+      #   #
+      #   # Note that a red check does NOT hold back the push: argunix
+      #   # publishes an image when its own job succeeds, and checks are
+      #   # separate top-level jobs.
+      #   checks = {
+      #     zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+      #     zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
+      #   };
+      # }
+    );
 }
