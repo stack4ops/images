@@ -13,10 +13,10 @@
     let
       # Explicit and Linux-only. flake-utils' eachDefaultSystem would add the
       # two darwin systems, where dockerTools cannot build an image at all.
-      # aarch64-linux is listed so the per-arch outputs exist for argunix to
-      # assemble into a multi-arch index -- which also needs `aarch64-linux`
-      # in services.argunix.systems and a builder for it (native, or the
-      # coordinator with boot.binfmt.emulatedSystems).
+      #
+      # aarch64-linux is listed so the per-arch outputs exist. Note that
+      # argunix only walks the systems in `services.argunix.systems`, so the
+      # aarch64 outputs stay invisible to CI until that option lists them too.
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -25,14 +25,27 @@
       eachSystem =
         systems: f:
         builtins.foldl' (
-          a: s: a // builtins.mapAttrs (k: v: (a.${k} or { }) // { ${s} = v; }) (f s)
+          acc: system:
+          let
+            outputs = f system;
+          in
+          builtins.foldl' (
+            acc': name:
+            acc'
+            // {
+              ${name} = (acc'.${name} or { }) // {
+                ${system} = outputs.${name};
+              };
+            }
+          ) acc (builtins.attrNames outputs)
         ) { } systems;
 
       inherit (inputs.nixpkgs) lib;
     in
     {
       # Not per-system, so outside eachSystem. Consumers who want `pkgs.zot`
-      # -- which is what the NixOS module defaults to -- add this overlay.
+      # -- which is what the NixOS module's `package` option defaults to --
+      # add this overlay.
       overlays.default = import ./overlay.nix;
 
       nixosModules.zot = ./nix/zot-module.nix;
@@ -48,15 +61,21 @@
       in
       {
         # Attribute names here become registry image names: an image exposed
-        # as `zot` lands at <registry>/<namespace>/zot. The images therefore
-        # take the plain names, and the binary is exposed under a suffixed one
-        # so the two do not collide when the sets are merged.
+        # as `zot` lands at <registry>/<namespace>/zot. Images therefore take
+        # the plain names, and the binary gets a suffixed one so the two do
+        # not collide when the sets are merged.
+        #
+        # argunix builds EVERY attribute and pushes only those carrying
+        # meta.image-format, so exposing the binary costs nothing at the
+        # registry -- and buys a separate job, which keeps a Go compile
+        # failure distinguishable from an image assembly failure. That
+        # distinction is worth having once aarch64 builds run under binfmt
+        # emulation.
         packages = pkgs.ociImages // {
-          # NOT `zot`: that name belongs to the image above, and `//` would
-          # let the binary silently replace it.
           zot-bin = pkgs.zot;
-          # `default` must not alias an image: it would inherit meta.image-format
-          # and be pushed a second time under the name "default".
+
+          # NOT an image: aliasing pkgs.ociImages.zot here would inherit its
+          # meta.image-format and get pushed a second time as "default".
           default = pkgs.zot;
         };
 
@@ -76,21 +95,31 @@
             # it.
             pkgs.oras
             pkgs.skopeo
-            pkgs.crane
+            # `crane` is not an attribute in nixpkgs -- the binary ships in
+            # go-containerregistry, which declares it as mainProgram.
+            pkgs.go-containerregistry
             # htpasswd, for generating the push credentials the module wants.
             pkgs.apacheHttpd
           ];
         };
       }
       // lib.optionalAttrs (system == "x86_64-linux") {
-        # NixOS-VM behavioural test: boots a VM running zot from the module in
-        # this flake, pushes an artifact, attaches a referrer and asserts it is
-        # served by the native Referrers API -- not merely by the Referrers Tag
-        # Schema fallback an OCI 1.0 registry would also pass.
+        # Two behavioural tests, deliberately not merged:
         #
-        # Gated to x86_64-linux because the test framework needs KVM. A shared
-        # vCPU cloud instance may not expose /dev/kvm at all; check before
-        # expecting this to run on the CI box.
+        #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
+        #                    htpasswd, systemd hardening, StateDirectory.
+        #   zot-image     -- the artifact we publish: does it load into
+        #                    Docker, start with a mounted config, serve, and
+        #                    still ship no shell.
+        #
+        # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
+        # merged into `nodes` rather than being a systemd-nspawn mode. A
+        # shared-vCPU cloud instance may not expose /dev/kvm at all -- check
+        # before expecting these to run on the CI box.
+        #
+        # Note that a red check does NOT hold back the push: argunix
+        # publishes an image when its own job succeeds, and checks are
+        # separate top-level jobs.
         checks = {
           zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
           zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
