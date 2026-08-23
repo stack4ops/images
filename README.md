@@ -1,5 +1,6 @@
 # zot via Nix Flake
 
+
 ## 1. Bootstrap hashes
 
 `flake.nix` contains placeholder hashes for `src.hash` and `vendorHash`. Sequence:
