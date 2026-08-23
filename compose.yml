@@ -1,0 +1,16 @@
+services:
+  zot:
+    # before "docker compose up":
+    #   nix build .#image
+    #   docker load < result
+    image: zot:2.1.17
+    container_name: zot
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - zot-data:/var/lib/registry
+      - ./config.json:/etc/zot/config.json:ro
+
+volumes:
+  zot-data:

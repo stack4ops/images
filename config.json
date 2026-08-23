@@ -1,0 +1,13 @@
+{
+  "distSpecVersion": "1.1.1",
+  "storage": {
+    "rootDirectory": "/home/stefan/zot-storage"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "5000"
+  },
+  "log": {
+    "level": "debug"
+  }
+}
