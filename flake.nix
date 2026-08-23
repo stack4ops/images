@@ -55,8 +55,9 @@
           # NOT `zot`: that name belongs to the image above, and `//` would
           # let the binary silently replace it.
           zot-bin = pkgs.zot;
-
-          default = pkgs.ociImages.zot;
+          # `default` must not alias an image: it would inherit meta.image-format
+          # and be pushed a second time under the name "default".
+          default = pkgs.zot;
         };
 
         apps.default = {
@@ -81,16 +82,19 @@
           ];
         };
       }
-      # // lib.optionalAttrs (system == "x86_64-linux") {
-      #   # NixOS-VM behavioural test: boots a VM running zot from the module in
-      #   # this flake, pushes an artifact, attaches a referrer and asserts it is
-      #   # served by the native Referrers API -- not merely by the Referrers Tag
-      #   # Schema fallback an OCI 1.0 registry would also pass.
-      #   #
-      #   # Gated to x86_64-linux because the test framework needs KVM. A shared
-      #   # vCPU cloud instance may not expose /dev/kvm at all; check before
-      #   # expecting this to run on the CI box.
-      #   checks.zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
-      # }
+      // lib.optionalAttrs (system == "x86_64-linux") {
+        # NixOS-VM behavioural test: boots a VM running zot from the module in
+        # this flake, pushes an artifact, attaches a referrer and asserts it is
+        # served by the native Referrers API -- not merely by the Referrers Tag
+        # Schema fallback an OCI 1.0 registry would also pass.
+        #
+        # Gated to x86_64-linux because the test framework needs KVM. A shared
+        # vCPU cloud instance may not expose /dev/kvm at all; check before
+        # expecting this to run on the CI box.
+        checks = {
+          zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+          zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
+        };
+      }
     );
 }
