@@ -62,6 +62,7 @@
         apps.default = {
           type = "app";
           program = lib.getExe pkgs.zot;
+          meta.description = "Run the zot registry";
         };
 
         devShells.default = pkgs.mkShell {
