@@ -76,7 +76,7 @@
 
           # NOT an image: aliasing pkgs.ociImages.zot here would inherit its
           # meta.image-format and get pushed a second time as "default".
-          default = pkgs.zot;
+          #default = pkgs.zot;
         };
 
         apps.default = {
