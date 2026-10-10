@@ -11,7 +11,7 @@
 buildGoModule rec {
   pname = "zot";
   # renovate: datasource=github-releases depName=project-zot/zot
-  version = "2.1.17";
+  version = "2.1.22";
 
   src = fetchFromGitHub {
     # Version in the name, so a version bump with a stale hash fails
