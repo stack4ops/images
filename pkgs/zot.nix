@@ -2,16 +2,19 @@
 # image and any NixOS consumer reuse the identical derivation.
 {
   lib,
-  buildGoModule,
+  # Pinned Go toolchain instead of nixpkgs' default buildGoModule: zot follows
+  # new Go releases quickly (2.1.22 requires go >= 1.27), faster than a stable
+  # nixpkgs moves its default. Bump both together when zot needs a newer Go.
+  buildGo127Module,
+  go_1_27,
   fetchFromGitHub,
-  go,
   versionCheckHook,
 }:
 
-buildGoModule rec {
+buildGo127Module rec {
   pname = "zot";
   # renovate: datasource=github-releases depName=project-zot/zot
-  version = "2.1.17";
+  version = "2.1.22";
 
   src = fetchFromGitHub {
     # Version in the name, so a version bump with a stale hash fails
@@ -20,10 +23,10 @@ buildGoModule rec {
     owner = "project-zot";
     repo = "zot";
     rev = "v${version}";
-    hash = "sha256-/1QEMpDq8okaVWhaynlJ+tE1b6AObUnHfHrmnylBKL0=";
+    hash = "sha256-b6b1wQI1KjiNDZUuo5bQ1oFEov3rdBv99mM7gpjSwmI=";
   };
 
-  vendorHash = "sha256-09LQKBKyqpgBbC44VPsZ3RJcwrHWy6TpF87u35UgcYI=";
+  vendorHash = "sha256-jfHzB7kRiMfrUQrNHrKuAROQ0OPCf/r97jSp1DwWLEc=";
 
   subPackages = [ "cmd/zot" ];
 
@@ -58,12 +61,11 @@ buildGoModule rec {
       "-X ${buildinfo}.ReleaseTag=v${version}"
       "-X ${buildinfo}.Commit=v${version}"
       "-X ${buildinfo}.BinaryType=minimal"
-      "-X ${buildinfo}.GoVersion=go${go.version}"
+      "-X ${buildinfo}.GoVersion=go${go_1_27.version}"
     ];
 
   # Runs `zot --version` on the installed binary and fails the build unless
-  # the output contains the version number (e.g. 2.1.17).
-  # Part of the package itself rather than a
+  # the output contains `version`. Part of the package itself rather than a
   # separate check on purpose: argunix pushes an image when its own job
   # succeeds and does not wait for checks, but the image cannot build without
   # this derivation -- so a binary with broken build info never reaches the

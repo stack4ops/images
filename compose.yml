@@ -4,7 +4,7 @@ services:
     #   nix build .#zot
     #   docker load < result
     # renovate: datasource=github-releases depName=project-zot/zot
-    image: zot:2.1.17
+    image: zot:2.1.22
     container_name: zot
     restart: unless-stopped
     ports:
