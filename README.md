@@ -1,94 +1,109 @@
-# zot via Nix Flake
+# zot via Nix flake
 
+zot OCI registry as a Nix package, a NixOS module and an OCI image. Built and
+published by argunix.
 
-## 1. Bootstrap hashes
+| Flake output | What it is |
+| --- | --- |
+| `packages.<system>.zot` | The OCI image (docker-archive). argunix pushes it as `<registry>/<namespace>/zot`. |
+| `packages.<system>.zot-bin` | The zot binary (minimal build, no extensions). |
+| `nixosModules.zot` | NixOS module, uses `pkgs.zot` from `overlays.default`. |
+| `checks.<system>.zot-image-static` | Image archive check, runs without KVM. |
+| `checks.x86_64-linux.zot-referrers`, `zot-image` | VM tests, need KVM. Off until `withVmTests = true` in `flake.nix`. |
 
-`flake.nix` contains placeholder hashes for `src.hash` and `vendorHash`. Sequence:
-
-```sh
-nix build .#zot
-```
-
-The first error gives you the correct `src` hash (format `got: sha256-...`):
-
-```
-error: hash mismatch in fixed-output derivation '...':
-         specified: sha256-0000000000000000000000000000000000000000000=
-            got:    sha256-AbCdEf...
-```
-
-→ Replace `hash` in `flake.nix` with the `got:` value, run `nix build .#zot` again. The second error gives you the `vendorHash` the same way. Enter both values, then the build succeeds.
-
-Alternative: `nix-prefetch-github project-zot zot --rev v2.1.15` to get the `src` hash in advance.
-
-## 2. Build and verify the binary
+## Build and verify the binary
 
 ```sh
-nix build .#zot
+nix build .#zot-bin
 ./result/bin/zot --version
 ```
 
-## 3. Build the OCI image
+The output carries the version as `commit` (e.g. `v2.1.17`), plus
+`binary-type: minimal` and the Go version. The build fails if it does not:
+`versionCheckHook` runs `zot --version` as part of the package.
+
+## Build the OCI image
 
 ```sh
-nix build .#image
-```
-
-The result is a tarball symlink `result`, not an image in the local Docker daemon — it needs to be loaded first:
-
-```sh
+nix build .#zot
 docker load < result
 docker images | grep zot
 ```
 
-## 4. Start locally with Compose
+`result` is a tarball, not an image in the local Docker daemon, hence the
+`docker load`. The archive is tagged `zot:<version>`; on the registry argunix
+tags it `<branch>`, `latest` (default branch) and `sha-<short>` instead.
+
+The version travels in the image config as OCI labels, so it is readable on
+any pinned digest:
+
+```sh
+skopeo inspect docker://<registry>/<namespace>/zot@sha256:<digest> \
+  | jq -r '.Labels["org.opencontainers.image.version"]'
+```
+
+## Start locally with Compose
 
 ```sh
 docker compose up -d
 docker compose logs -f zot
-```
-
-in a second shell tab 
-
-```sh
 curl http://localhost:5000/v2/
 ```
 
-Check logs in the first shell tab. Should contain something like this:
+`config.json` is mounted read-only. It binds `0.0.0.0` inside the container
+(required for the port mapping) and stores data in `/var/lib/registry`, the
+Compose volume. The port is published on loopback only, because this config
+has no authentication.
+
+## Push test against the local instance
 
 ```sh
-level":"info","message":"HTTP API","module":"http","component":"session","clientIP":"172.18.0.1:39472","method":"GET","path":"/v2/","statusCode":200,"latency":"0s","bodySize":0,"headers":{"Accept":["*/*"],"User-Agent":["curl/8.20.0"]},"caller":"zotregistry.dev/zot/v2/pkg/api/session.go:92","func":"zotregistry.dev/zot/v2/pkg/api.SessionLogger.func1.1","goroutine":70}
-```
-
-`config.json` sits in the same directory and is mounted read-only — the storage path `/var/lib/registry` is set to match the Compose volume.
-
-## 5. Push test against the local instance
-
-```sh
-nix develop   # adds regctl to the shell PATH
+nix develop   # regctl, oras, skopeo, crane
 regctl --host reg=localhost:5000,tls=disabled image copy alpine:latest localhost:5000/alpine:latest
-regctl --host reg=localhost:5000,tls=disabled manifest get localhost:5000/alpine:latest
+oras discover --plain-http localhost:5000/alpine:latest
 ```
 
-## 6. Shutdown compose stack
+## Shut down
 
 ```sh
 docker compose down
 ```
 
+## Updates
+
+Renovate runs from the bot repository (stack4ops/renovate) with its shared
+preset. It tracks:
+
+- the zot version, via the `# renovate:` comments in `pkgs/zot.nix` and
+  `compose.yml` (one PR for both),
+- the `nixpkgs` input in `flake.lock` (weekly),
+- GitHub Actions, pinned by digest.
+
+Renovate cannot compute Nix hashes. On Renovate branches,
+`.github/workflows/nix-hash-fixup.yml` runs `nix-update --version=skip` for
+`zot-bin` and pushes the new `hash` and `vendorHash`. argunix then builds the
+new head; a green status lets GitHub automerge (patch and minor only, after
+3 days).
+
+Manual bump, without Renovate:
+
+```sh
+nix run nixpkgs#nix-update -- --flake --version=2.1.20 zot-bin
+```
+
 ## Notes
 
-- `subPackages = [ "cmd/zot" ]` builds the minimal variant without extensions (sync, search, scrub, ui, mgmt, imagetrust, events). For full functionality, enable the `tags` line in `flake.nix` — increases build time and binary size.
+- Minimal build: `subPackages = [ "cmd/zot" ]` without extension tags (sync,
+  search, scrub, ui, mgmt, imagetrust, events). The Referrers API is part of
+  the core and works without them. For the full flavour, enable the `tags`
+  line in `pkgs/zot.nix`.
 
-- Image is `from scratch` + `cacert` — no base OS, no shell in the container (no `docker exec -it ... sh`).
+- Image is `from scratch` + `cacert`: no base OS, no shell
+  (`zot-image-static` enforces that).
 
-- `buildImage` instead of `buildLayeredImage`: deliberate choice. The image has
-  only two components (zot binary, cacert), and the binary changes on every
-  version bump, so layer-level pull caching saves at most the size of cacert
-  (a few hundred KB) — negligible against the binary itself. 
-  
-  More layers also means more overlayfs mounts to unpack and assemble at container
-  start, a small but real cost on the other side of the trade-off. 
-  
-  Revisit if this becomes one of several shared-base Go-binary images in the registry, where
-  cross-image layer dedup would start to matter more than the mount overhead.
+- `buildImage` instead of `buildLayeredImage`: deliberate choice. The image
+  has only two components (zot binary, cacert), and the binary changes on
+  every version bump, so layer-level pull caching saves at most the size of
+  cacert (a few hundred KB). More layers also means more overlayfs mounts at
+  container start. Revisit if this becomes one of several shared-base Go
+  binary images in the registry, where cross-image layer dedup would matter.

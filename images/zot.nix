@@ -20,7 +20,9 @@
 
 dockerTools.buildImage {
   name = "zot";
-  tag = "latest";
+  # Internal to the archive only (docker load, compose.yml). argunix ignores it
+  # and tags the registry copy with branch, latest and sha-<short>.
+  tag = zot.version;
 
   copyToRoot = buildEnv {
     name = "zot-image-root";
@@ -47,6 +49,16 @@ dockerTools.buildImage {
     ];
 
     ExposedPorts."5000/tcp" = { };
+
+    # The registry tags carry no version (branch, latest, sha-<short>), so the
+    # upstream version travels in the image config instead. Readable with
+    # `skopeo inspect` or `regctl image config` on any pinned digest.
+    Labels = {
+      "org.opencontainers.image.title" = "zot";
+      "org.opencontainers.image.version" = zot.version;
+      "org.opencontainers.image.url" = zot.meta.homepage;
+      "org.opencontainers.image.licenses" = "Apache-2.0";
+    };
     Env = [ "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" ];
   };
 

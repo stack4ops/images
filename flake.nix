@@ -41,6 +41,11 @@
         ) { } systems;
 
       inherit (inputs.nixpkgs) lib;
+
+      # The VM tests need /dev/kvm on the builder. Off until the CI box has it;
+      # run them locally with `nix build .#checks.x86_64-linux.zot-referrers`
+      # after flipping this.
+      withVmTests = false;
     in
     {
       # Not per-system, so outside eachSystem. Consumers who want `pkgs.zot`
@@ -103,27 +108,32 @@
           ];
         };
       }
-      # // lib.optionalAttrs (system == "x86_64-linux") {
-      #   # Two behavioural tests, deliberately not merged:
-      #   #
-      #   #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
-      #   #                    htpasswd, systemd hardening, StateDirectory.
-      #   #   zot-image     -- the artifact we publish: does it load into
-      #   #                    Docker, start with a mounted config, serve, and
-      #   #                    still ship no shell.
-      #   #
-      #   # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
-      #   # merged into `nodes` rather than being a systemd-nspawn mode. A
-      #   # shared-vCPU cloud instance may not expose /dev/kvm at all -- check
-      #   # before expecting these to run on the CI box.
-      #   #
-      #   # Note that a red check does NOT hold back the push: argunix
-      #   # publishes an image when its own job succeeds, and checks are
-      #   # separate top-level jobs.
-      #   checks = {
-      #     zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
-      #     zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
-      #   };
-      # }
+      // {
+        # Runs everywhere, no KVM: unpacks the image archive and checks tag,
+        # version label, entrypoint, CA bundle and the absence of a shell.
+        #
+        # Note that a red check does NOT hold back the push: argunix
+        # publishes an image when its own job succeeds, and checks are
+        # separate top-level jobs. On Renovate PRs they still gate the merge,
+        # as long as the branch protection requires them.
+        checks = {
+          zot-image-static = pkgs.callPackage ./tests/image-static.nix { };
+        }
+        # Two behavioural tests, deliberately not merged:
+        #
+        #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
+        #                    htpasswd, systemd hardening, StateDirectory.
+        #   zot-image     -- the artifact we publish: does it load into
+        #                    Docker, start with a mounted config, serve, and
+        #                    still ship no shell.
+        #
+        # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
+        # merged into `nodes` rather than being a systemd-nspawn mode. Flip
+        # withVmTests once the CI builder exposes /dev/kvm.
+        // lib.optionalAttrs (withVmTests && system == "x86_64-linux") {
+          zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+          zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
+        };
+      }
     );
 }

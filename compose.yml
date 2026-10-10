@@ -1,13 +1,16 @@
 services:
   zot:
     # before "docker compose up":
-    #   nix build .#image
+    #   nix build .#zot
     #   docker load < result
+    # renovate: datasource=github-releases depName=project-zot/zot
     image: zot:2.1.17
     container_name: zot
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      # Loopback only: config.json has no auth, and zot has to bind 0.0.0.0
+      # inside the container to be reachable through the port mapping at all.
+      - "127.0.0.1:5000:5000"
     volumes:
       - zot-data:/var/lib/registry
       - ./config.json:/etc/zot/config.json:ro

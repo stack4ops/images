@@ -4,10 +4,13 @@
   lib,
   buildGoModule,
   fetchFromGitHub,
+  go,
+  versionCheckHook,
 }:
 
 buildGoModule rec {
   pname = "zot";
+  # renovate: datasource=github-releases depName=project-zot/zot
   version = "2.1.17";
 
   src = fetchFromGitHub {
@@ -27,14 +30,43 @@ buildGoModule rec {
   # UI, GraphQL search, CVE scanning and friends, none of which this
   # deployment needs.
   #
-  # For the full flavour:
+  # For the full flavour (also set BinaryType below to something other than
+  # "minimal"):
   # tags = [ "sync" "search" "scrub" "metrics" "lint" "ui" "mgmt" "imagetrust" "events" ];
 
-  ldflags = [
-    "-s"
-    "-w"
-    "-X github.com/project-zot/zot/pkg/api/config.ReleaseTag=v${version}"
-  ];
+  # Build info, mirroring upstream's Makefile (binary-minimal target). The
+  # module path is zotregistry.dev/zot/v2 and the variables live in
+  # pkg/buildinfo.
+  #
+  # `zot --version` prints Commit, BinaryType and GoVersion -- NOT ReleaseTag.
+  # Upstream fills Commit from `git describe --tags`, so it starts with the
+  # release tag; with no git checkout here, the tag itself is the closest
+  # equivalent and is what puts the version into the output.
+  #
+  # A -X flag naming a package that does not exist is silently ignored by the
+  # Go linker. The version check below is what catches that now.
+  ldflags =
+    let
+      buildinfo = "zotregistry.dev/zot/v2/pkg/buildinfo";
+    in
+    [
+      "-s"
+      "-w"
+      "-X ${buildinfo}.ReleaseTag=v${version}"
+      "-X ${buildinfo}.Commit=v${version}"
+      "-X ${buildinfo}.BinaryType=minimal"
+      "-X ${buildinfo}.GoVersion=go${go.version}"
+    ];
+
+  # Runs `zot --version` on the installed binary and fails the build unless
+  # the output contains `version`. Part of the package itself rather than a
+  # separate check on purpose: argunix pushes an image when its own job
+  # succeeds and does not wait for checks, but the image cannot build without
+  # this derivation -- so a binary with broken build info never reaches the
+  # registry. Needs no KVM.
+  nativeInstallCheckInputs = [ versionCheckHook ];
+  doInstallCheck = true;
+  versionCheckProgramArg = "--version";
 
   meta = {
     description = "OCI-native container image registry";
