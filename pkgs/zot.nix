@@ -2,16 +2,13 @@
 # image and any NixOS consumer reuse the identical derivation.
 {
   lib,
-  # Pinned Go toolchain instead of nixpkgs' default buildGoModule: zot follows
-  # new Go releases quickly (2.1.22 requires go >= 1.27), faster than a stable
-  # nixpkgs moves its default. Bump both together when zot needs a newer Go.
-  buildGo127Module,
-  go_1_27,
+  buildGoModule,
   fetchFromGitHub,
+  go,
   versionCheckHook,
 }:
 
-buildGo127Module rec {
+buildGoModule rec {
   pname = "zot";
   # renovate: datasource=github-releases depName=project-zot/zot
   version = "2.1.17";
@@ -61,11 +58,12 @@ buildGo127Module rec {
       "-X ${buildinfo}.ReleaseTag=v${version}"
       "-X ${buildinfo}.Commit=v${version}"
       "-X ${buildinfo}.BinaryType=minimal"
-      "-X ${buildinfo}.GoVersion=go${go_1_27.version}"
+      "-X ${buildinfo}.GoVersion=go${go.version}"
     ];
 
   # Runs `zot --version` on the installed binary and fails the build unless
-  # the output contains `version`. Part of the package itself rather than a
+  # the output contains the version number (e.g. 2.1.17).
+  # Part of the package itself rather than a
   # separate check on purpose: argunix pushes an image when its own job
   # succeeds and does not wait for checks, but the image cannot build without
   # this derivation -- so a binary with broken build info never reaches the
