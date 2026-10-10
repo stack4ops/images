@@ -3,8 +3,5 @@
   "extends": ["local>stack4ops/renovate"],
   "ignoreDeps": ["zot"],
   "description": "ignoreDeps: compose.yml references the locally loaded image zot:<version>, not a Docker Hub image. Its version is tracked by the annotated regex dependency project-zot/zot instead.",
-  "rebaseWhen": "behind-base-branch",
-  "packageRules": [
-     { "matchPackageNames": ["*"], "automerge": false }
-   ]
+  "rebaseWhen": "behind-base-branch"
 }
