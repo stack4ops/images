@@ -14,6 +14,9 @@ buildGoModule rec {
   version = "2.1.17";
 
   src = fetchFromGitHub {
+    # Version in the name, so a version bump with a stale hash fails
+    # instead of silently reusing the old source from the store.
+    name = "zot-${version}-source";
     owner = "project-zot";
     repo = "zot";
     rev = "v${version}";
