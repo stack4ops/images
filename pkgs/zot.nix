@@ -62,7 +62,8 @@ buildGoModule rec {
     ];
 
   # Runs `zot --version` on the installed binary and fails the build unless
-  # the output contains `version`. Part of the package itself rather than a
+  # the output contains the version number (e.g. 2.1.17).
+  # Part of the package itself rather than a
   # separate check on purpose: argunix pushes an image when its own job
   # succeeds and does not wait for checks, but the image cannot build without
   # this derivation -- so a binary with broken build info never reaches the

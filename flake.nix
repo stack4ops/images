@@ -45,7 +45,7 @@
       # The VM tests need /dev/kvm on the builder. Off until the CI box has it;
       # run them locally with `nix build .#checks.x86_64-linux.zot-referrers`
       # after flipping this.
-      withVmTests = false;
+      withVmTests = true;
     in
     {
       # Not per-system, so outside eachSystem. Consumers who want `pkgs.zot`
