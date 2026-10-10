@@ -6,7 +6,7 @@ on:
 jobs:
   fixup:
     if: startsWith(github.head_ref, 'renovate/')
-    uses: stack4ops/renovate/.github/workflows/nix-hash-fixup.yml@main
+    uses: stack4ops/renovate/.github/workflows/nix-hash-fixup.yml@7b6a393af8e6c82195869479e21f0d2d9c15ccb1 # main
     with:
       attributes: zot-bin
     secrets:
