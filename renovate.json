@@ -2,5 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["local>stack4ops/renovate"],
   "ignoreDeps": ["zot"],
-  "description": "ignoreDeps: compose.yml references the locally loaded image zot:<version>, not a Docker Hub image. Its version is tracked by the annotated regex dependency project-zot/zot instead."
+  "description": "ignoreDeps: compose.yml references the locally loaded image zot:<version>, not a Docker Hub image. Its version is tracked by the annotated regex dependency project-zot/zot instead.",
+  "packageRules": [
+     { "matchPackageNames": ["*"], "automerge": false }
+   ]
 }
