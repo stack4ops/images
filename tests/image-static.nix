@@ -39,23 +39,27 @@ runCommand "zot-image-static-check"
     jq -e '.config.Entrypoint == ["/bin/zot"]' "$config" > /dev/null \
       || fail "entrypoint is $(jq -c .config.Entrypoint "$config")"
 
+    # List every layer into one file first, then grep the file. Piping
+    # `tar -t` straight into `grep -q` is wrong here: stdenv runs builders
+    # with `set -o pipefail`, grep -q exits on the first match, tar dies of
+    # SIGPIPE, and the pipeline reports failure exactly when grep matched.
+    # That inverted both checks below -- including the shell check, which
+    # then passed even with a shell present.
+    for layer in $(jq -r '.[0].Layers[]' "$manifest"); do
+      tar -tf "img/$layer" | sed 's#^\./##' >> files.txt
+    done
+
     echo "CA bundle path from the image env exists in a layer"
     cert=$(jq -r '.config.Env[] | select(startswith("SSL_CERT_FILE=")) | sub("^SSL_CERT_FILE=/"; "")' "$config")
     [ -n "$cert" ] || fail "SSL_CERT_FILE not set"
-    found=
-    for layer in $(jq -r '.[0].Layers[]' "$manifest"); do
-      tar -tf "img/$layer" | sed 's#^\./##' | grep -qx "$cert" && found=1
-    done
-    [ -n "$found" ] || fail "$cert not present in any layer"
+    grep -qxF "$cert" files.txt || fail "$cert not present in any layer"
 
     echo "no shell or interpreter anywhere in the image"
     # Matches /bin/sh and /bin/bash at the root as well as any bash or sh that
     # a closure addition would drag in under /nix/store.
-    for layer in $(jq -r '.[0].Layers[]' "$manifest"); do
-      if tar -tf "img/$layer" | grep -Eq '(^|/)bin/(sh|bash|dash|busybox)$'; then
-        fail "shell found in $layer"
-      fi
-    done
+    if shells=$(grep -E '(^|/)bin/(sh|bash|dash|busybox)$' files.txt); then
+      fail "shell found: $(echo "$shells" | head -n 3 | tr '\n' ' ')"
+    fi
 
     touch "$out"
   ''
