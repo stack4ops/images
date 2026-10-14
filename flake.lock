@@ -2,11 +2,11 @@
   "nodes": {
     "nixpkgs": {
       "locked": {
-        "lastModified": 1791426274,
-        "narHash": "sha256-MWhktfFtFE8Jl7bf9Pkp7TR5MSdYCjCswSo0Gkb4ywc=",
+        "lastModified": 1791883866,
+        "narHash": "sha256-yvkDdToRZ4IgPc9tSBzzCYJvTLf8n5eE3rgUkpCuD5A=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "7c8764b7c7b09b34f632464276218ef9090eaa11",
+        "rev": "a033e66ab94a6bedf2c3d58d93a36319d3cbbbaf",
         "type": "github"
       },
       "original": {
@@ -18,7 +18,28 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "stack4ops-pkgs": "stack4ops-pkgs"
+      }
+    },
+    "stack4ops-pkgs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791917197,
+        "narHash": "sha256-RuOzVGk387rbuVPdSpflSpgkobIiySA6QRonhrnlZpU=",
+        "owner": "stack4ops",
+        "repo": "pkgs",
+        "rev": "5e5c53af0da8a3e1d88605e8c81c6737afebf1b2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "stack4ops",
+        "repo": "pkgs",
+        "type": "github"
       }
     }
   },

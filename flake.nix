@@ -1,11 +1,28 @@
 {
-  description = "zot OCI registry: package, NixOS module, and OCI images (argunix-compatible)";
+  description = "stack4ops OCI images (argunix-compatible)";
 
   inputs = {
-    # Pinned to the release the consuming host tracks. Following unstable here
-    # would drag a second nixpkgs instance -- and a second Go toolchain and
-    # cacert -- into any system that imports this flake.
+    # Pinned to the release the consuming host tracks.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+
+    # The packages the images are built from, plus their NixOS modules.
+    #
+    # `follows` matters here: this flake applies the overlay from there to its
+    # OWN nixpkgs, so the nixpkgs pinned over there is never used for
+    # anything. Without the follows it would still be fetched and recorded in
+    # flake.lock, leaving a second nixpkgs node that drifts from this one
+    # while changing nothing. With it, there is exactly one pin -- the one on
+    # the line above.
+    #
+    # Deliberately NOT re-exported from this flake. A consumer who wants
+    # `services.zot` takes the module from stack4ops/pkgs directly. Passing it
+    # through here would mean two lock files to bump for one zot update, with
+    # the system pointing at the older version in between and nothing turning
+    # red to say so.
+    stack4ops-pkgs = {
+      url = "github:stack4ops/pkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -13,6 +30,8 @@
     let
       # Explicit and Linux-only. flake-utils' eachDefaultSystem would add the
       # two darwin systems, where dockerTools cannot build an image at all.
+      # Unlike stack4ops/pkgs, this restriction is structural rather than a
+      # matter of available builders.
       #
       # aarch64-linux is listed so the per-arch outputs exist. Note that
       # argunix only walks the systems in `services.argunix.systems`, so the
@@ -39,100 +58,80 @@
             }
           ) acc (builtins.attrNames outputs)
         ) { } systems;
-
-      inherit (inputs.nixpkgs) lib;
-
-      # The VM tests need /dev/kvm on the builder. Off until the CI box has it;
-      # run them locally with `nix build .#checks.x86_64-linux.zot-referrers`
-      # after flipping this.
-      withVmTests = false;
     in
     {
-      # Not per-system, so outside eachSystem. Consumers who want `pkgs.zot`
-      # -- which is what the NixOS module's `package` option defaults to --
-      # add this overlay.
+      # Images only. This overlay does NOT stand on its own: it builds from
+      # `zot`, which stack4ops/pkgs provides, so a consumer applies both, in
+      # this order. See overlay.nix.
       overlays.default = import ./overlay.nix;
-
-      nixosModules.zot = ./nix/zot-module.nix;
-      nixosModules.default = inputs.self.nixosModules.zot;
     }
     // eachSystem systems (
       system:
       let
         pkgs = import inputs.nixpkgs {
           inherit system;
-          overlays = [ inputs.self.overlays.default ];
+          overlays = [
+            # Order is load-bearing: the image overlay resolves `zot` from
+            # `final`, which only has it once the package overlay has run.
+            inputs.stack4ops-pkgs.overlays.default
+            inputs.self.overlays.default
+          ];
         };
       in
       {
         # Attribute names here become registry image names: an image exposed
-        # as `zot` lands at <registry>/<namespace>/zot. Images therefore take
-        # the plain names, and the binary gets a suffixed one so the two do
-        # not collide when the sets are merged.
+        # as `zot` lands at <registry>/<namespace>/zot. Since this repository
+        # exposes nothing but images, the names can be plain -- the `zot-bin`
+        # suffix that used to be needed disappeared with the split.
         #
-        # argunix builds EVERY attribute and pushes only those carrying
-        # meta.image-format, so exposing the binary costs nothing at the
-        # registry -- and buys a separate job, which keeps a Go compile
-        # failure distinguishable from an image assembly failure. That
-        # distinction is worth having once aarch64 builds run under binfmt
-        # emulation.
-        packages = pkgs.ociImages // {
-          zot-bin = pkgs.zot;
-
-          # NOT an image: aliasing pkgs.ociImages.zot here would inherit its
-          # meta.image-format and get pushed a second time as "default".
-          #default = pkgs.zot;
-        };
-
-        apps.default = {
-          type = "app";
-          program = lib.getExe pkgs.zot;
-          meta.description = "Run the zot registry";
-        };
+        # No `packages.default`. Aliasing an image to `default` would inherit
+        # its meta.image-format and get the same artefact pushed a second time
+        # under the name "default"; and there is no non-image output left here
+        # to point it at instead. Build by name: `nix build .#zot`.
+        packages = pkgs.ociImages;
 
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.zot
-            pkgs.regctl
             # oras is the tool for the referrers work this registry exists to
             # exercise: `oras discover` lists artifacts attached to a
             # manifest, `oras pull` fetches one. regctl alone does not cover
             # it.
             pkgs.oras
+            pkgs.regctl
             pkgs.skopeo
             # `crane` is not an attribute in nixpkgs -- the binary ships in
             # go-containerregistry, which declares it as mainProgram.
             pkgs.go-containerregistry
-            # htpasswd, for generating the push credentials the module wants.
-            pkgs.apacheHttpd
+            pkgs.jq
           ];
         };
-      }
-      // {
-        # Runs everywhere, no KVM: unpacks the image archive and checks tag,
-        # version label, entrypoint, CA bundle and the absence of a shell.
-        #
-        # Note that a red check does NOT hold back the push: argunix
-        # publishes an image when its own job succeeds, and checks are
-        # separate top-level jobs. On Renovate PRs they still gate the merge,
-        # as long as the branch protection requires them.
+
         checks = {
-          zot-image-static = pkgs.callPackage ./tests/image-static.nix { };
-        }
-        # Two behavioural tests, deliberately not merged:
-        #
-        #   zot-referrers -- the NixOS module: DynamicUser, LoadCredential-fed
-        #                    htpasswd, systemd hardening, StateDirectory.
-        #   zot-image     -- the artifact we publish: does it load into
-        #                    Docker, start with a mounted config, serve, and
-        #                    still ship no shell.
-        #
-        # Both need KVM: runNixOSTest is VM-based, and `containers.<name>` is
-        # merged into `nodes` rather than being a systemd-nspawn mode. Flip
-        # withVmTests once the CI builder exposes /dev/kvm.
-        // lib.optionalAttrs (withVmTests && system == "x86_64-linux") {
-          zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
-          zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
+          # Derivation-level assertions on the archive this repository
+          # publishes. No VM, so no /dev/kvm, so this one actually runs on the
+          # dev instance's builder -- which is why it exists: the behavioural
+          # test below cannot run there yet, and shipping an image with a
+          # broken entrypoint or a shell in it is worse than shipping it
+          # behaviourally untested.
+          zot-image-structure = pkgs.callPackage ./tests/image-structure.nix { };
+
+          # zot-image exercises the ARTEFACT end to end: load it into Docker,
+          # start it with an externally supplied config and a mounted volume,
+          # push, attach a referrer, restart, and confirm no shell is
+          # reachable.
+          #
+          # Needs KVM: runNixOSTest is VM-based, and `containers.<name>` is
+          # merged into `nodes` rather than being a systemd-nspawn mode. A
+          # shared-vCPU cloud instance may not expose /dev/kvm at all, and an
+          # argunix builder that cannot verify the device no longer advertises
+          # the feature, so this check sits unscheduled rather than failing
+          # fast. Uncomment once a builder with /dev/kvm is enrolled.
+          #
+          # Note that a red check does NOT hold back the push: argunix
+          # publishes an image when its own job succeeds, and checks are
+          # separate top-level jobs.
+          #
+          # zot-image = pkgs.testers.runNixOSTest ./tests/image.nix;
         };
       }
     );

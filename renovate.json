@@ -1,7 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["local>stack4ops/renovate"],
-  "ignoreDeps": ["zot"],
-  "description": "ignoreDeps: compose.yml references the locally loaded image zot:<version>, not a Docker Hub image. Its version is tracked by the annotated regex dependency project-zot/zot instead.",
-  "rebaseWhen": "behind-base-branch"
+  "lockFileMaintenance": {
+    "description": "Nightly rather than the preset's weekly. This repository consumes stack4ops/pkgs, and the lock file is the only place that dependency is expressed -- the flake input tracks a branch, so there is no version string for Renovate to bump. Weekly would mean a zot release sits in pkgs' main for up to seven days before it reaches a published image. The bot's 04:17 run falls inside this window, two hours after the pkgs run.",
+    "schedule": ["after 4am and before 6am"]
+  }
 }

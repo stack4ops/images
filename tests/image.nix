@@ -5,10 +5,11 @@
 # Then pushes an artifact and attaches a referrer through the containerised
 # registry.
 #
-# The split from tests/zot-referrers.nix is deliberate and the two do not
-# overlap much:
+# The counterpart lives in the other repository and the two do not overlap
+# much:
 #
-#   zot-referrers.nix  -- the NixOS module: DynamicUser, LoadCredential-fed
+#   stack4ops/pkgs, tests/zot-referrers.nix
+#                      -- the NixOS module: DynamicUser, LoadCredential-fed
 #                         htpasswd, systemd hardening, StateDirectory. That
 #                         needs a real NixOS system, so it defines the service
 #                         directly on the test node.
@@ -17,17 +18,17 @@
 #                         The node is only a Docker host; zot comes from the
 #                         image, not from the node's configuration.
 #
-# Both need a VM: runNixOSTest is VM-based, and `containers.<name>` is merged
-# into `nodes` rather than being a systemd-nspawn mode. Gated to x86_64-linux
-# by the flake, because the framework needs KVM.
+# Keeping them in separate repositories is what makes a module regression and
+# an image regression separately red (ADR-010).
+#
+# This one needs a VM: runNixOSTest is VM-based, and `containers.<name>` is
+# merged into `nodes` rather than being a systemd-nspawn mode. It is therefore
+# commented out in the flake until a builder with /dev/kvm exists. The
+# KVM-free subset of what it checks lives in tests/image-structure.nix.
 { pkgs, ... }:
 let
   pushUser = "argunix";
   pushPassword = "testsecret";
-
-  # The archive tag follows the packaged version (images/zot.nix). Derived,
-  # not written out, so a Renovate bump does not silently break this test.
-  imageRef = "zot:${pkgs.zot.version}";
 
   htpasswd = pkgs.runCommand "zot-image-test-htpasswd" {
     nativeBuildInputs = [ pkgs.apacheHttpd ];
@@ -94,7 +95,7 @@ in
         # The tag comes from name/tag inside buildImage, which is internal to
         # the archive -- unlike the registry path, which argunix derives from
         # the flake attribute name.
-        machine.succeed("docker image inspect ${imageRef} > /dev/null")
+        machine.succeed("docker image inspect zot:latest > /dev/null")
 
     with subtest("the container starts with an externally supplied config"):
         machine.succeed(
@@ -102,7 +103,7 @@ in
             "-v ${zotConfig}:/etc/zot/config.json:ro "
             "-v ${htpasswd}:/etc/zot/htpasswd:ro "
             "-v zot-storage:/var/lib/registry "
-            "${imageRef}"
+            "zot:latest"
         )
         machine.wait_until_succeeds(
             "curl -fsS http://localhost:5000/v2/ -o /dev/null", timeout=60
@@ -154,7 +155,7 @@ in
         # outbound TLS from the container fails at runtime with an error that
         # points nowhere useful.
         env = machine.succeed(
-            "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ${imageRef}"
+            "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' zot:latest"
         )
         cert_path = next(
             line.split("=", 1)[1]
@@ -165,7 +166,7 @@ in
         # Probed from the outside on purpose: the image ships no shell, so
         # `docker run --entrypoint /bin/sh` is not available. `docker create`
         # makes the filesystem reachable without starting anything.
-        machine.succeed("docker create --name probe ${imageRef}")
+        machine.succeed("docker create --name probe zot:latest")
         machine.succeed(f"docker cp probe:{cert_path} /tmp/ca-bundle.crt")
         machine.succeed("test -s /tmp/ca-bundle.crt")
 
